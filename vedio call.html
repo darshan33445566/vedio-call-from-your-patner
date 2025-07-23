@@ -1,0 +1,168 @@
+!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Call & Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+
+        video {
+            width: 45%;
+            border: 2px solid black;
+            margin-bottom: 20px;
+        }
+
+        #chat {
+            width: 400px;
+            height: 300px;
+            border: 2px solid #ccc;
+            padding: 10px;
+            overflow-y: scroll;
+            margin-bottom: 10px;
+        }
+
+        input[type="text"] {
+            width: 80%;
+            padding: 10px;
+            margin: 5px;
+        }
+
+        button {
+            padding: 10px;
+            width: 15%;
+            background-color: #008CBA;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #005f6b;
+        }
+
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+        .user1 {
+            background-color: #d1f1ff;
+            align-self: flex-start;
+        }
+
+        .user2 {
+            background-color: #f0e0f7;
+            align-self: flex-end;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Video Call & Chat</h1>
+
+    <!-- Video Call Section -->
+    <div>
+        <video id="localVideo" autoplay muted></video>
+        <video id="remoteVideo" autoplay></video>
+    </div>
+
+    <!-- Chat Section -->
+    <div id="chat"></div>
+    <input type="text" id="messageInput" placeholder="Type a message..." />
+    <button id="sendMessageBtn">Send</button>
+
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.3.1/dist/peerjs.min.js"></script>
+    <script>
+        // Setup WebRTC PeerJS
+        const peer = new Peer();
+        let localStream;
+        let remoteStream;
+        let currentCall;
+        let chatSocket = new WebSocket('ws://localhost:3000'); // WebSocket for chat
+
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const chatBox = document.getElementById('chat');
+        const messageInput = document.getElementById('messageInput');
+        const sendMessageBtn = document.getElementById('sendMessageBtn');
+
+        // 1. Access local media (video and audio)
+        async function getLocalStream() {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            localStream = stream;
+            localVideo.srcObject = stream;
+        }
+
+        // 2. Handle incoming calls
+        peer.on('call', (call) => {
+            getLocalStream().then(() => {
+                call.answer(localStream);
+                call.on('stream', (remoteStream) => {
+                    remoteVideo.srcObject = remoteStream;
+                    remoteStream = remoteStream;
+                });
+            });
+        });
+
+        // 3. Start a call to another user
+        function startCall(remotePeerId) {
+            getLocalStream().then(() => {
+                const call = peer.call(remotePeerId, localStream);
+                call.on('stream', (remoteStream) => {
+                    remoteVideo.srcObject = remoteStream;
+                    remoteStream = remoteStream;
+                });
+                currentCall = call;
+            });
+        }
+
+        // 4. Handle incoming messages through WebSocket
+        chatSocket.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            displayMessage(message.user, message.text);
+        };
+
+        // 5. Send message to WebSocket server
+        sendMessageBtn.addEventListener('click', () => {
+            const message = messageInput.value;
+            if (message.trim()) {
+                chatSocket.send(JSON.stringify({ user: peer.id, text: message }));
+                displayMessage('You', message);
+                messageInput.value = ''; // clear input
+            }
+        });
+
+        // Display message in chat
+        function displayMessage(user, text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', user === peer.id ? 'user1' : 'user2');
+            messageDiv.textContent = `${user}: ${text}`;
+            chatBox.appendChild(messageDiv);
+            chatBox.scrollTop = chatBox.scrollHeight; // Scroll to bottom
+        }
+
+        // 6. Initialize the app
+        peer.on('open', (id) => {
+            console.log('My peer ID is ' + id);
+        });
+
+        // Trigger start call (simulate peer ID)
+        setTimeout(() => {
+            const remotePeerId = prompt("Enter peer ID to call:");
+            if (remotePeerId) startCall(remotePeerId);
+        }, 2000);
+
+        // Get local media stream on page load
+        getLocalStream();
+    </script>
+</body>
+</html>
